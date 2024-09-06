@@ -2,3 +2,4 @@ lfw/*
 runs/*
 *.csv
 *.txt
+__pycache__
