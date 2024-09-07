@@ -114,38 +114,39 @@ def train_eval(
 
         vae.eval()
 
-        mean_epoch_loss = np.mean(epoch_loss)
-        writer.add_scalar('train-loss', mean_epoch_loss, e + 1)
-        training_losses.append(mean_epoch_loss)
-        if min(training_losses) == training_losses[-1]:
-            vae.save(f'trained/{model_name}.dat')
+        with torch.no_grad():
+            mean_epoch_loss = np.mean(epoch_loss)
+            writer.add_scalar('train-loss', mean_epoch_loss, e + 1)
+            training_losses.append(mean_epoch_loss)
+            if min(training_losses) == training_losses[-1]:
+                vae.save(f'trained/{model_name}.dat')
 
-        epoch_loss = []
-        for images in val_pair_loader:
-            images_v = images[:2]
-            images_v = stack_batch(*images_v).to(device)
-            mu_v, log_var_v, images_out_v = vae(images_v)
-            r_loss_v = r_loss(images_out_v, images_v)
-            kl_loss_v = kl_loss(mu_v, log_var_v)
-            loss = kl_loss_v + r_loss_v * r_loss_factor
+            epoch_loss = []
+            for images in val_pair_loader:
+                images_v = images[:2]
+                images_v = stack_batch(*images_v).to(device)
+                mu_v, log_var_v, images_out_v = vae(images_v)
+                r_loss_v = r_loss(images_out_v, images_v)
+                kl_loss_v = kl_loss(mu_v, log_var_v)
+                loss = kl_loss_v + r_loss_v * r_loss_factor
 
-            epoch_loss.append(loss.item())
+                epoch_loss.append(loss.item())
 
-        mean_epoch_loss = np.mean(epoch_loss)
-        val_losses.append(mean_epoch_loss)
-        writer.add_scalar(val + '-loss', mean_epoch_loss, e + 1)
+            mean_epoch_loss = np.mean(epoch_loss)
+            val_losses.append(mean_epoch_loss)
+            writer.add_scalar(val + '-loss', mean_epoch_loss, e + 1)
 
-        generated_imgs_v = vae.forward_decoder(latent_space_test_points_v).detach()
-        imgs_grid = utils.make_grid(generated_imgs_v)
-        writer.add_image('latent-sample-decoded', imgs_grid.cpu().numpy(), e + 1)
+            generated_imgs_v = vae.forward_decoder(latent_space_test_points_v).detach()
+            imgs_grid = utils.make_grid(generated_imgs_v)
+            writer.add_image('latent-sample-decoded', imgs_grid.cpu().numpy(), e + 1)
 
-        reconstructed_real_sample = vae.forward(train_sample)[2].detach()
-        imgs_grid = utils.make_grid(reconstructed_real_sample)
-        writer.add_image('train-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
+            reconstructed_real_sample = vae.forward(train_sample)[2].detach()
+            imgs_grid = utils.make_grid(reconstructed_real_sample)
+            writer.add_image('train-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
 
-        reconstructed_real_sample = vae.forward(train_sample)[2].detach()
-        imgs_grid = utils.make_grid(reconstructed_real_sample)
-        writer.add_image(val + '-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
+            reconstructed_real_sample = vae.forward(train_sample)[2].detach()
+            imgs_grid = utils.make_grid(reconstructed_real_sample)
+            writer.add_image(val + '-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
 
         vae.train()
 
@@ -153,37 +154,38 @@ def train_eval(
     
     vae.load_state_dict(torch.load(f'trained/{model_name}.dat')['state_dict'])
 
-    train_left_latent, train_right_latent, train_values = to_numpy(train_pair_loader, vae)
-    val_left_latent, val_right_latent, val_values = to_numpy(val_pair_loader, vae)
-    
+    with torch.no_grad():
+        train_left_latent, train_right_latent, train_values = to_numpy(train_pair_loader, vae)
+        val_left_latent, val_right_latent, val_values = to_numpy(val_pair_loader, vae)
+        
 
-    dif = train_left_latent - train_right_latent
-    sq_dif = dif ** 2
-    sq_dif_sum = np.sum(sq_dif, axis=1)
-    train_dist_array = np.sqrt(sq_dif_sum)
-    train_min = train_dist_array.min()
-    train_max = train_dist_array.max()
+        dif = train_left_latent - train_right_latent
+        sq_dif = dif ** 2
+        sq_dif_sum = np.sum(sq_dif, axis=1)
+        train_dist_array = np.sqrt(sq_dif_sum)
+        train_min = train_dist_array.min()
+        train_max = train_dist_array.max()
 
-    dif = val_left_latent - val_right_latent
-    sq_dif = dif ** 2
-    sq_dif_sum = np.sum(sq_dif, axis=1)
-    val_dist_array = np.sqrt(sq_dif_sum)
+        dif = val_left_latent - val_right_latent
+        sq_dif = dif ** 2
+        sq_dif_sum = np.sum(sq_dif, axis=1)
+        val_dist_array = np.sqrt(sq_dif_sum)
 
-    def obj_func(threshold: float) -> float:
-        decision = (train_dist_array < threshold).astype(int)
-        accuracy = np.mean(decision == train_values)
-        return -accuracy
+        def obj_func(threshold: float) -> float:
+            decision = (train_dist_array < threshold).astype(int)
+            accuracy = np.mean(decision == train_values)
+            return -accuracy
 
-    domain = [{'name': 'threshold', 'type': 'continuous', 'domain': (train_min, train_max)}]
-    max_iter = 50
-    BO = BayesianOptimization(f = obj_func, domain = domain)
-    BO.run_optimization(max_iter=max_iter)
-    opt_threshold = BO.x_opt[0]
+        domain = [{'name': 'threshold', 'type': 'continuous', 'domain': (train_min, train_max)}]
+        max_iter = 50
+        BO = BayesianOptimization(f = obj_func, domain = domain)
+        BO.run_optimization(max_iter=max_iter)
+        opt_threshold = BO.x_opt[0]
 
-    train_acc = evaluate(train_dist_array, train_values, opt_threshold)
-    writer.add_scalar('train-accuracy', train_acc)
-    val_acc = evaluate(val_dist_array, val_values, opt_threshold)
-    writer.add_scalar(val + '-accuracy', val_acc)
+        train_acc = evaluate(train_dist_array, train_values, opt_threshold)
+        writer.add_scalar('train-accuracy', train_acc)
+        val_acc = evaluate(val_dist_array, val_values, opt_threshold)
+        writer.add_scalar(val + '-accuracy', val_acc)
 
     
     del train_sample
