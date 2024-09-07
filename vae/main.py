@@ -115,11 +115,25 @@ def main():
                                              hp_dict,
                                              routine_tag)[1]
                         accuracy_list.append(val_acc)
-        print(hyperparam_list)
-        print(accuracy_list)
         best = np.argmax(np.array(accuracy_list))
-        print(hyperparam_list[best])
-        print(accuracy_list[best])        
+        best_hp = hyperparam_list[best]
+        size = best_hp['size']
+        shape = (size, size)
+        transform = transforms.Resize(shape)
+        
+        train_pair_dataset = PairDataGenerator(pairs_train, transform)
+        train_pair_loader = DataLoader(train_pair_dataset, batch_size=BATCH_SIZE, shuffle=True, generator=g)
+
+        test_pair_dataset = PairDataGenerator(pairs_test, transform)
+        test_pair_loader = DataLoader(test_pair_dataset, batch_size=BATCH_SIZE, shuffle=True, generator=g)
+
+        routine_tag = "devFinal"
+
+        train_acc, test_acc, train_losses, test_losses = train_eval(train_pair_loader, test_pair_loader, hp_dict, routine_tag)
+        
+        print(f"Final Train Accuracy: {train_acc}")
+        print(f"Final Test Accuracy: {test_acc}")
+
 
 
 if __name__ == "__main__":
