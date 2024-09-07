@@ -3,3 +3,4 @@ runs/*
 *.csv
 *.txt
 __pycache__
+trained/timm-siamese
