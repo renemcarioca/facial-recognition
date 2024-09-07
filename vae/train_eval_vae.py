@@ -1,5 +1,5 @@
 from model import VAE
-import torch
+import torch, gc, time, os
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
@@ -10,6 +10,7 @@ from GPyOpt.methods.bayesian_optimization import BayesianOptimization
 
 
 
+torch.use_deterministic_algorithms(True)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SEED = 42
 torch.manual_seed(SEED)
@@ -32,12 +33,14 @@ def to_numpy(pair_loader: DataLoader, vae):
     for left_images, right_images, value_batch in pair_loader:
         left_images = left_images.to(device)
         right_images = right_images.to(device)
-        left_images_latent = vae.forward_encoder(left_images)[0].detach().numpy()
-        right_images_latent = vae.forward_encoder(right_images)[0].detach().numpy()
+        left_images_latent = vae.forward_encoder(left_images)[0].detach().cpu().numpy()
+        right_images_latent = vae.forward_encoder(right_images)[0].detach().cpu().numpy()
         values = value_batch.detach().numpy()
         left_latent_list.append(left_images_latent)
         right_latent_list.append(right_images_latent)
         value_list.append(values)
+        del(left_images)
+        del(right_images)
     left_latent = np.concatenate(left_latent_list, axis=0)
     right_latent = np.concatenate(right_latent_list, axis=0)
     values = np.concatenate(value_list, axis=0)
@@ -47,33 +50,37 @@ def evaluate(dist_array: np.array, true: np.array, threshold: float) -> float:
     decision = (dist_array < threshold).astype(int)
     return np.mean(decision == true)
 
-def train_eval(train_loader: DataLoader,
-          val_loader: DataLoader,
-          train_pair_loader: DataLoader,
-          val_pair_loader: DataLoader,
-          hyperparameters: dict,
-          routine_tag: str) -> dict:
+def stack_batch(img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+    return torch.cat((img1, img2), 0)
+
+def train_eval(
+        train_pair_loader: DataLoader,
+        val_pair_loader: DataLoader,
+        hyperparameters: dict,
+        routine_tag: str) -> dict:
     size = hyperparameters['size']
-    input_shape = (size, size)
+    input_shape = (3, size, size)
     z_dim = hyperparameters['z_dim']
     conv_blocks = hyperparameters['conv_blocks']
     r_loss_factor = hyperparameters['r_loss_factor']
     model_name = routine_tag + '-' + str(input_shape) + '-' + str(z_dim) + '-' + str(conv_blocks) + '-' + str(r_loss_factor)
     writer = SummaryWriter(comment= '-' + model_name)
 
-    EPOCHS = 20
-    LR = .0001
+    EPOCHS = 30
+    LR = .0005
     SAMPLE_SIZE = 32
 
-    train_sample, _ = next(iter(train_loader))
-    val_sample, _ = next(iter(val_loader))
+    train_sample = next(iter(train_pair_loader))[:2]
+    train_sample = stack_batch(*train_sample)
+    val_sample = next(iter(train_pair_loader))[:2]
+    val_sample = stack_batch(*val_sample)
 
     val = 'val' if 'HPO' in routine_tag else 'test'
 
     img_grid = utils.make_grid(train_sample).numpy()
-    writer.add_image('real-train-sample', img_grid)
+    writer.add_image('train-sample', img_grid)
     img_grid = utils.make_grid(val_sample).numpy()
-    writer.add_image('real-' + val + '-sample', img_grid)
+    writer.add_image(val + '-sample', img_grid)
 
     train_sample = train_sample.to(device)
     val_sample = val_sample.to(device)
@@ -90,8 +97,9 @@ def train_eval(train_loader: DataLoader,
 
     for e in range(EPOCHS):
         epoch_loss = []
-        for images, _ in train_loader:
-            images_v = images.to(device)
+        for images in train_pair_loader:
+            images_v = images[:2]
+            images_v = stack_batch(*images_v).to(device)
 
             optimizer.zero_grad()
 
@@ -113,8 +121,9 @@ def train_eval(train_loader: DataLoader,
             vae.save(f'trained/{model_name}.dat')
 
         epoch_loss = []
-        for images, _ in val_loader:
-            images_v = images.to(device)
+        for images in val_pair_loader:
+            images_v = images[:2]
+            images_v = stack_batch(*images_v).to(device)
             mu_v, log_var_v, images_out_v = vae(images_v)
             r_loss_v = r_loss(images_out_v, images_v)
             kl_loss_v = kl_loss(mu_v, log_var_v)
@@ -132,17 +141,17 @@ def train_eval(train_loader: DataLoader,
 
         reconstructed_real_sample = vae.forward(train_sample)[2].detach()
         imgs_grid = utils.make_grid(reconstructed_real_sample)
-        writer.add_image('real-train-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
+        writer.add_image('train-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
 
         reconstructed_real_sample = vae.forward(train_sample)[2].detach()
         imgs_grid = utils.make_grid(reconstructed_real_sample)
-        writer.add_image('real-' + val + '-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
+        writer.add_image(val + '-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
 
         vae.train()
 
     vae.eval()
     
-    vae = vae.load_state_dict(torch.load(f'trained/{model_name}.dat')['state_dict'])
+    vae.load_state_dict(torch.load(f'trained/{model_name}.dat')['state_dict'])
 
     train_left_latent, train_right_latent, train_values = to_numpy(train_pair_loader, vae)
     val_left_latent, val_right_latent, val_values = to_numpy(val_pair_loader, vae)
@@ -175,5 +184,17 @@ def train_eval(train_loader: DataLoader,
     writer.add_scalar('train-accuracy', train_acc)
     val_acc = evaluate(val_dist_array, val_values, opt_threshold)
     writer.add_scalar(val + '-accuracy', val_acc)
+
+    
+    del train_sample
+    del val_sample
+    del latent_space_test_points_v
+    del vae
+    del optimizer
+    del images_v
+    del loss
+
+    gc.collect()
+    torch.cuda.empty_cache()
 
     return train_acc, val_acc, training_losses, val_losses
