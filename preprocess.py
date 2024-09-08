@@ -59,6 +59,8 @@ class Preprocess:
 	@staticmethod
 	def load_sample_pairs(size: int = 20, transform=None):
 		train_pairs = Preprocess.extract_pairs(Preprocess.pairs_dev_train_path)
+		rng = np.random.default_rng()
+		rng.shuffle(train_pairs)
 		return PairDataGenerator(train_pairs[:size], transform=transform)
 	
 	@staticmethod
