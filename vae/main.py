@@ -75,7 +75,7 @@ def main():
     size_grid = grid['size']
     z_dim_grid = grid['z_dim']
     conv_blocks_grid = grid['conv_blocks']
-    factor_grid = grid['r_loss_factor']
+    factor_grid = grid['kl_loss_factor']
     print(grid)
     if args.mode == "dev":
         pairs_train_path = '../pairsDevTrain.txt'
@@ -106,7 +106,7 @@ def main():
                             "size" : size,
                             "z_dim" : z_dim,
                             "conv_blocks" : conv_blocks,
-                            "r_loss_factor" : factor                             
+                            "kl_loss_factor" : factor                             
                         }
                         hyperparam_list.append(hp_dict)
                         routine_tag = "devHPO"

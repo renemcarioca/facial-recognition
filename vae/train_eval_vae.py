@@ -62,12 +62,12 @@ def train_eval(
     input_shape = (3, size, size)
     z_dim = hyperparameters['z_dim']
     conv_blocks = hyperparameters['conv_blocks']
-    r_loss_factor = hyperparameters['r_loss_factor']
-    model_name = routine_tag + '-' + str(input_shape) + '-' + str(z_dim) + '-' + str(conv_blocks) + '-' + str(r_loss_factor)
+    kl_loss_factor = hyperparameters['kl_loss_factor']
+    model_name = routine_tag + '-' + str(input_shape) + '-' + str(z_dim) + '-' + str(conv_blocks) + '-' + str(kl_loss_factor)
     writer = SummaryWriter(comment= '-' + model_name)
 
-    EPOCHS = 30
-    LR = .0005
+    EPOCHS = 100
+    LR = .0001
     SAMPLE_SIZE = 32
 
     train_sample = next(iter(train_pair_loader))[:2]
@@ -106,7 +106,7 @@ def train_eval(
             mu_v, log_var_v, images_out_v = vae(images_v)
             r_loss_v = r_loss(images_out_v, images_v)
             kl_loss_v = kl_loss(mu_v, log_var_v)
-            loss = kl_loss_v + r_loss_v * r_loss_factor
+            loss = kl_loss_factor * kl_loss_v + r_loss_v
             loss.backward()
             optimizer.step()
 
@@ -128,7 +128,7 @@ def train_eval(
                 mu_v, log_var_v, images_out_v = vae(images_v)
                 r_loss_v = r_loss(images_out_v, images_v)
                 kl_loss_v = kl_loss(mu_v, log_var_v)
-                loss = kl_loss_v + r_loss_v * r_loss_factor
+                loss = kl_loss_factor * kl_loss_v + r_loss_v
 
                 epoch_loss.append(loss.item())
 
@@ -144,7 +144,7 @@ def train_eval(
             imgs_grid = utils.make_grid(reconstructed_real_sample)
             writer.add_image('train-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
 
-            reconstructed_real_sample = vae.forward(train_sample)[2].detach()
+            reconstructed_real_sample = vae.forward(val_sample)[2].detach()
             imgs_grid = utils.make_grid(reconstructed_real_sample)
             writer.add_image(val + '-sample-reconstructed', imgs_grid.cpu().numpy(), e + 1)
 
