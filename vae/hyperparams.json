@@ -1,6 +1,6 @@
 {
-    "size" : [64, 128],
-    "z_dim" : [256, 512],
-    "conv_blocks" : [3, 5],
-    "kl_loss_factor" : [0.1, 1, 10]
+    "size" : [64],
+    "z_dim" : [256],
+    "conv_blocks" : [3],
+    "kl_loss_factor" : [1]
 }

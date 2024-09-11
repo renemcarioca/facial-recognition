@@ -67,7 +67,7 @@ def train_eval(
     writer = SummaryWriter(comment= '-' + model_name)
 
     EPOCHS = 100
-    LR = .0001
+    LR = .001 if size==64 else .0001
     SAMPLE_SIZE = 32
 
     train_sample = next(iter(train_pair_loader))[:2]
@@ -89,7 +89,7 @@ def train_eval(
     latent_space_test_points_v = torch.Tensor(latent_space_test_points).to(device)
 
     vae = VAE(input_shape, z_dim, conv_blocks).to(device)
-    optimizer = optim.Adam(vae.parameters(), LR)
+    optimizer = optim.AdamW(vae.parameters(), LR)
 
     training_losses = []
     val_losses = []
@@ -116,7 +116,7 @@ def train_eval(
 
         with torch.no_grad():
             mean_epoch_loss = np.mean(epoch_loss)
-            writer.add_scalar('train-loss', mean_epoch_loss, e + 1)
+            writer.add_scalar('train-loss-' + str(kl_loss_factor), mean_epoch_loss, e + 1)
             training_losses.append(mean_epoch_loss)
             if min(training_losses) == training_losses[-1]:
                 vae.save(f'trained/{model_name}.dat')
@@ -134,7 +134,7 @@ def train_eval(
 
             mean_epoch_loss = np.mean(epoch_loss)
             val_losses.append(mean_epoch_loss)
-            writer.add_scalar(val + '-loss', mean_epoch_loss, e + 1)
+            writer.add_scalar(val + '-loss-' + str(kl_loss_factor), mean_epoch_loss, e + 1)
 
             generated_imgs_v = vae.forward_decoder(latent_space_test_points_v).detach()
             imgs_grid = utils.make_grid(generated_imgs_v)

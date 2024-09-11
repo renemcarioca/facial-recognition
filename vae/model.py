@@ -51,12 +51,10 @@ class VAE(nn.Module):
         self.conv_out_size = self._get_conv_out_size(input_shape)
         self.mu = nn.Sequential(
             nn.Linear(self.conv_out_size, z_dim),
-            nn.LeakyReLU(),
             nn.Dropout(0.2)
         )
         self.log_var = nn.Sequential(
             nn.Linear(self.conv_out_size, z_dim),
-            nn.LeakyReLU(),
             nn.Dropout(0.2)
         )
 
