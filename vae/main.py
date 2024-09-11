@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 import json
 import argparse
+import time
 from train_eval_vae import train_eval
 from PIL import Image
 
@@ -15,7 +16,7 @@ SEED = 42
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 np.random.seed(SEED)
-dataset_path = '../lfw/'
+dataset_path = '../lfw-deepfunneled/'
 
 BATCH_SIZE = 16
 g = torch.Generator()
@@ -84,6 +85,7 @@ def main():
         pairs_test = extract_pairs_for_development(pairs_test_path)
         hyperparam_list = []
         accuracy_list = []
+        t0 = time.time()
         for size in size_grid:
             shape = (size, size)
             transform = transforms.Resize(shape)
@@ -129,10 +131,11 @@ def main():
 
         routine_tag = "devFinal"
 
-        train_acc, test_acc, train_losses, test_losses = train_eval(train_pair_loader, test_pair_loader, hp_dict, routine_tag)
-        
+        train_acc, test_acc, train_losses, test_losses = train_eval(train_pair_loader, test_pair_loader, best_hp, routine_tag)
+        t1 = time.time()
         print(f"Final Train Accuracy: {train_acc}")
         print(f"Final Test Accuracy: {test_acc}")
+        print(f"Total time: {t1-t0}")
 
 
 
