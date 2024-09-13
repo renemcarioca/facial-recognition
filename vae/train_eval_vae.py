@@ -18,7 +18,6 @@ torch.cuda.manual_seed(SEED)
 np.random.seed(SEED)
 
 def kl_loss(mu, log_var):
-    # TODO: dividir entre el numero de batches? 
     return -0.5 * torch.mean(1 + log_var - mu.pow(2) - torch.exp(log_var))
 
 def r_loss(y_train, y_pred):
@@ -67,7 +66,8 @@ def train_eval(
     writer = SummaryWriter(comment= '-' + model_name)
 
     EPOCHS = 100
-    LR = .001 if size==64 else .0001
+    LR = 1e-4
+    # LR = .001 if size==64 else .0001
     SAMPLE_SIZE = 32
 
     train_sample = next(iter(train_pair_loader))[:2]
@@ -118,8 +118,6 @@ def train_eval(
             mean_epoch_loss = np.mean(epoch_loss)
             writer.add_scalar('train-loss-' + str(kl_loss_factor), mean_epoch_loss, e + 1)
             training_losses.append(mean_epoch_loss)
-            if min(training_losses) == training_losses[-1]:
-                vae.save(f'trained/{model_name}.dat')
 
             epoch_loss = []
             for images in val_pair_loader:
@@ -135,6 +133,13 @@ def train_eval(
             mean_epoch_loss = np.mean(epoch_loss)
             val_losses.append(mean_epoch_loss)
             writer.add_scalar(val + '-loss-' + str(kl_loss_factor), mean_epoch_loss, e + 1)
+            
+            if val == 'test':
+                if min(training_losses) == training_losses[-1]:
+                    vae.save(f'trained-final/{model_name}.dat')
+            else:
+                if min(val_losses) == val_losses[-1]:
+                    vae.save(f'trained-final/{model_name}.dat')
 
             generated_imgs_v = vae.forward_decoder(latent_space_test_points_v).detach()
             imgs_grid = utils.make_grid(generated_imgs_v)
@@ -152,7 +157,7 @@ def train_eval(
 
     vae.eval()
     
-    vae.load_state_dict(torch.load(f'trained/{model_name}.dat')['state_dict'])
+    vae.load_state_dict(torch.load(f'trained-final/{model_name}.dat')['state_dict'])
 
     with torch.no_grad():
         train_left_latent, train_right_latent, train_values = to_numpy(train_pair_loader, vae)
