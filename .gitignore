@@ -2,4 +2,3 @@ lfw/*
 *.csv
 *.txt
 __pycache__
-*/trained
